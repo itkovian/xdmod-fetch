@@ -10,6 +10,8 @@ use rdkafka::Message;
 use std::path::{Path, PathBuf};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 
 fn setup_logging(debug: bool, logfile: Option<&str>) -> Result<(), log::SetLoggerError> {
     let level_filter = if debug {
@@ -90,10 +92,24 @@ async fn fetch(bootstrap_servers: String, sender: Sender<String>) {
 
 async fn process_messages(mut receiver: Receiver<String>) {
 
-    // just write to a sinmple file
-
+    // just write to a simple file
     while let Some(payload) = receiver.recv().await {
-        tokio::fs::write("/tmp/xdmod-fetch.out", payload).await;
+        info!("Processing payload");
+        //split("|")[12].split("T")[0].replace("-", "")
+        let fields : Vec<&str> = payload.split('|').collect();
+        let day : Vec<&str> = fields[12]
+            .split('T')
+            .collect();
+        let filename = format!("/tmp/xdmod-fetch.{}", day[0].replace("-", ""));
+        info!("Writing to file {}", filename);
+        let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open(filename)
+        .unwrap();
+
+        writeln!(file, "{}", payload);
     }
 }
 
