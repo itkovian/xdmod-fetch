@@ -88,8 +88,13 @@ async fn fetch(bootstrap_servers: String, sender: Sender<String>) {
     info!("Stream processing terminated");
 }
 
-async fn process_messages(receiver: Receiver<String>) {
-    todo!();
+async fn process_messages(mut receiver: Receiver<String>) {
+
+    // just write to a sinmple file
+
+    while let Some(payload) = receiver.recv().await {
+        tokio::fs::write("/tmp/xdmod-fetch.out", payload).await;
+    }
 }
 
 #[tokio::main]
@@ -108,12 +113,17 @@ async fn main() {
 
     setup_logging(true, Some("/tmp/xdmod-fetch.log"));
 
+    info!("Logging stup done");
+
     let bootstrap_servers = matches.value_of("bootstrap.servers").unwrap().to_owned();
     let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(1000);
 
-    tokio::spawn(async move { fetch(bootstrap_servers.to_string(), sender) });
+    info!("Channel created");
 
-    tokio::spawn(async move {
-        process_messages(receiver);
-    });
+    tokio::join!(
+        tokio::spawn(async move { fetch(bootstrap_servers.to_string(), sender).await }),
+        tokio::spawn(async move { process_messages(receiver).await })
+    );
+
+
 }
