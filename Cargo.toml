@@ -1,0 +1,17 @@
+[package]
+name = "xdmod-fetch"
+version = "0.1.0"
+authors = ["Andy Georges <itkovian@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rdkafka = { version= "0.24.0", features= [ "ssl", "tokio" ] }
+clap = "2.33"
+tokio = { version = "0.2.21", features = ["full"] }
+log = "0.4.11"
+futures = "0.3.5"
+fern = { version = "0.6.0", features = ["reopen-03"]}
+chrono = "0.4.13"
+libc = "0.2.72"
