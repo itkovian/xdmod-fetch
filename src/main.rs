@@ -42,12 +42,6 @@ fn setup_logging(debug: bool, logfile: Option<&str>) -> Result<(), log::SetLogge
     .apply()
 }
 
-async fn record_borrowed_message_receipt(msg: &BorrowedMessage<'_>) {
-    // Simulate some work that must be done in the same order as messages are
-    // received; i.e., before truly parallel processing can begin.
-    info!("Message received: {}", msg.offset());
-}
-
 async fn fetch(bootstrap_servers: String, sender: Sender<String>) {
     let mut cfg = ClientConfig::new()
         .set("bootstrap.servers", &bootstrap_servers)
@@ -71,10 +65,8 @@ async fn fetch(bootstrap_servers: String, sender: Sender<String>) {
     let stream_processor = consumer.start().try_for_each(|borrowed_message| {
         let mut owned_sender = sender.clone();
         async move {
-            // Process each message
-            record_borrowed_message_receipt(&borrowed_message).await;
-            // Borrowed messages can't outlive the consumer they are received from, so they need to
-            // be owned in order to be sent to a separate thread.
+            info!("Message received: {}", borrowed_message.offset());
+            // We need to own this message
             let owned_message = borrowed_message.detach();
             tokio::spawn(async move {
                 if let Some(Ok(payload)) = owned_message.payload_view::<str>() {
@@ -150,7 +142,7 @@ async fn main() {
 
     setup_logging(true, matches.value_of("logfile"));
 
-    info!("Logging stup done");
+    info!("Logging setup done");
 
     let bootstrap_servers = matches.value_of("bootstrap.servers").unwrap().to_owned();
     let shreddir = Path::new(matches.value_of("shred.dir").unwrap()).to_owned();
