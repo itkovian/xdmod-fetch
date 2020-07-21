@@ -7,11 +7,11 @@ use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::Consumer;
 use rdkafka::message::{BorrowedMessage, OwnedMessage};
 use rdkafka::Message;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use tokio::prelude::*;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use std::fs::OpenOptions;
-use std::io::prelude::*;
 
 fn setup_logging(debug: bool, logfile: Option<&str>) -> Result<(), log::SetLoggerError> {
     let level_filter = if debug {
@@ -90,24 +90,23 @@ async fn fetch(bootstrap_servers: String, sender: Sender<String>) {
     info!("Stream processing terminated");
 }
 
-async fn process_messages(mut receiver: Receiver<String>) {
-
+async fn process_messages(dir: &Path, basename: String, mut receiver: Receiver<String>) {
     // just write to a simple file
     while let Some(payload) = receiver.recv().await {
         info!("Processing payload");
-        //split("|")[12].split("T")[0].replace("-", "")
-        let fields : Vec<&str> = payload.split('|').collect();
-        let day : Vec<&str> = fields[12]
-            .split('T')
-            .collect();
-        let filename = format!("/tmp/xdmod-fetch.{}", day[0].replace("-", ""));
-        info!("Writing to file {}", filename);
+        // TODO: check for empty payloads
+        let fields: Vec<&str> = payload.split('|').collect();
+        let day: Vec<&str> = fields[12].split('T').collect();
+        let filename = dir
+            .clone()
+            .join(format!("{}.{}", basename, day[0].replace("-", "")));
+        info!("Writing to file {:?}", filename);
         let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open(filename)
-        .unwrap();
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(filename)
+            .unwrap();
 
         writeln!(file, "{}", payload);
     }
@@ -123,23 +122,45 @@ async fn main() {
             Arg::with_name("bootstrap.servers")
                 .long("bootstrap.servers")
                 .takes_value(true)
-                .required(true),
+                .required(true)
+                .help("Kafka servers to talk to"),
+        )
+        .arg(
+            Arg::with_name("shred.dir")
+                .long("shred.dir")
+                .takes_value(true)
+                .default_value("/tmp")
+                .help("Directory to create the files for shredding"),
+        )
+        .arg(
+            Arg::with_name("basename")
+                .long("basename")
+                .takes_value(true)
+                .default_value("xdmod")
+                .help("Basename of the file to shred (excluding date stamp YYYYMMDD)"),
+        )
+        .arg(
+            Arg::with_name("logfile")
+                .long("logfile")
+                .short("l")
+                .takes_value(true)
+                .help("Log file name."),
         )
         .get_matches();
 
-    setup_logging(true, Some("/tmp/xdmod-fetch.log"));
+    setup_logging(true, matches.value_of("logfile"));
 
     info!("Logging stup done");
 
     let bootstrap_servers = matches.value_of("bootstrap.servers").unwrap().to_owned();
+    let shreddir = Path::new(matches.value_of("shred.dir").unwrap()).to_owned();
+    let basename = matches.value_of("basename").unwrap().to_owned();
     let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(1000);
 
     info!("Channel created");
 
     tokio::join!(
         tokio::spawn(async move { fetch(bootstrap_servers.to_string(), sender).await }),
-        tokio::spawn(async move { process_messages(receiver).await })
+        tokio::spawn(async move { process_messages(&shreddir, basename, receiver).await })
     );
-
-
 }
